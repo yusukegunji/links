@@ -120,7 +120,7 @@ async function safeFetch(url: URL, fetcher: typeof fetch, signal: AbortSignal): 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     if (!isFetchableUrl(current)) return null;
     const res = await fetcher(current.toString(), {
-      headers: { Accept: "text/html,application/xhtml+xml", "User-Agent": "links-bot/1.0" },
+      headers: { Accept: "text/html,application/xhtml+xml", "User-Agent": "Mozilla/5.0 (compatible; links-bot/1.0)" },
       redirect: "manual",
       signal,
     });

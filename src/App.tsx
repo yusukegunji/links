@@ -1,8 +1,87 @@
-export function App() {
+import { useCallback, useEffect, useState } from "react";
+import type { TagCount } from "../shared/types";
+import { api, ApiError } from "./api";
+import { LinkForm } from "./components/LinkForm";
+import { TokenGate } from "./components/TokenGate";
+import { useLocation } from "./router";
+
+function Shell({ logout }: { logout: () => void }) {
+  const { path, navigate } = useLocation();
+  const [tags, setTags] = useState<TagCount[]>([]);
+
+  const refreshTags = useCallback(async () => {
+    try {
+      setTags(await api.listTags());
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) logout();
+    }
+  }, [logout]);
+
+  useEffect(() => {
+    void refreshTags();
+  }, [refreshTags]);
+
+  function link(to: string, label: string) {
+    return (
+      <a
+        href={to}
+        aria-current={path === to ? "page" : undefined}
+        onClick={(e) => {
+          e.preventDefault();
+          navigate(to);
+        }}
+      >
+        {label}
+      </a>
+    );
+  }
+
   return (
-    <main className="container">
-      <h1>links</h1>
-      <p>リンクとタグで作る自分だけの備忘録</p>
-    </main>
+    <>
+      <header className="header">
+        <div className="container header-inner">
+          <a
+            className="brand"
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate("/");
+            }}
+          >
+            🔖 links
+          </a>
+          <nav className="nav">
+            {link("/", "一覧")}
+            {link("/new", "＋ 追加")}
+            <button type="button" className="btn-ghost" onClick={logout}>
+              ログアウト
+            </button>
+          </nav>
+        </div>
+      </header>
+      <main className="container">
+        {path === "/new" ? (
+          <>
+            <h1 className="page-title">リンクを追加</h1>
+            <LinkForm
+              tagSuggestions={tags.map((t) => t.name)}
+              onCreated={() => {
+                void refreshTags();
+                navigate("/");
+              }}
+            />
+          </>
+        ) : (
+          <>
+            <h1 className="page-title">一覧</h1>
+            <p className="muted">（一覧ページは次の PR で実装）</p>
+          </>
+        )}
+      </main>
+    </>
   );
+}
+
+export function App() {
+  return <TokenGate>{(logout) => <Shell logout={logout} />}</TokenGate>;
 }
