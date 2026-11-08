@@ -213,3 +213,14 @@ describe("review follow-ups", () => {
     expect(res.status).toBe(500);
   });
 });
+
+describe("GET /api/suggest", () => {
+  it("validates the url and requires auth", async () => {
+    expect((await t.request("/api/suggest?url=javascript:x")).status).toBe(400);
+    expect((await t.request("/api/suggest?url=https://localhost/", {}, null)).status).toBe(401);
+  });
+  it("returns tags without fetching blocked hosts", async () => {
+    const res = await t.request("/api/suggest?url=" + encodeURIComponent("http://localhost:8787/docs/"));
+    expect(await res.json()).toEqual({ title: "", tags: ["docs"] });
+  });
+});
