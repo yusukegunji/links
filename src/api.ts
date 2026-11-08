@@ -49,12 +49,12 @@ async function request<T>(path: string, init: RequestInit = {}, token = getToken
 
 export const api = {
   checkToken: (token: string) => request<{ ok: true }>("/auth/check", {}, token, false),
-  listLinks: (params: { tags?: string[]; q?: string } = {}) => {
+  listLinks: (params: { tags?: string[]; q?: string } = {}, signal?: AbortSignal) => {
     const sp = new URLSearchParams();
     if (params.tags?.length) sp.set("tags", params.tags.join(","));
     if (params.q?.trim()) sp.set("q", params.q.trim());
     const qs = sp.toString();
-    return request<{ links: Link[] }>(`/links${qs ? `?${qs}` : ""}`).then((r) => r.links);
+    return request<{ links: Link[] }>(`/links${qs ? `?${qs}` : ""}`, { signal }).then((r) => r.links);
   },
   createLink: (input: LinkInput) =>
     request<{ link: Link }>("/links", { method: "POST", body: JSON.stringify(input) }).then((r) => r.link),

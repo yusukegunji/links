@@ -14,7 +14,8 @@ function Shell({ logout }: { logout: () => void }) {
   const { path, search, navigate } = useLocation();
   const onSearchChange = useCallback(
     (f: { tags: string[]; q: string }) => {
-      // Typing refines the current entry; toggling tags creates history entries.
+      // Typing refines the current history entry (no entry per keystroke); toggling tags
+      // pushes a new entry so Back undoes the last tag change.
       const sameTags = f.tags.join(",") === (new URLSearchParams(window.location.search).get("tags") ?? "");
       navigate(`/${buildSearch(f)}`, { replace: sameTags });
     },

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { Link } from "../../shared/types";
 import { api, ApiError } from "../api";
 import { TagInput } from "./TagInput";
@@ -29,6 +29,21 @@ export function LinkCard({ link, activeTags, tagSuggestions, onTagClick, onUpdat
   const [tags, setTags] = useState(link.tags);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
+
+  // Move focus into the form when editing starts and back to the edit button when it ends.
+  useEffect(() => {
+    if (editing) titleInputRef.current?.focus();
+    else if (wasEditing.current) editButtonRef.current?.focus();
+    wasEditing.current = editing;
+  }, [editing]);
+
+  function cancelEdit() {
+    setError(null);
+    setEditing(false);
+  }
 
   function startEdit() {
     setTitle(link.title);
@@ -71,7 +86,7 @@ export function LinkCard({ link, activeTags, tagSuggestions, onTagClick, onUpdat
           <div className="muted small">{link.url}</div>
           <label className="field">
             <span>タイトル</span>
-            <input value={title} maxLength={300} onChange={(e) => setTitle(e.target.value)} />
+            <input ref={titleInputRef} value={title} maxLength={300} onChange={(e) => setTitle(e.target.value)} />
           </label>
           <div className="field">
             <span>タグ</span>
@@ -87,7 +102,7 @@ export function LinkCard({ link, activeTags, tagSuggestions, onTagClick, onUpdat
             </p>
           )}
           <div className="actions">
-            <button type="button" className="btn-ghost" onClick={() => setEditing(false)}>
+            <button type="button" className="btn-ghost" onClick={cancelEdit}>
               キャンセル
             </button>
             <button type="submit" className="btn-primary" disabled={busy}>
@@ -118,6 +133,7 @@ export function LinkCard({ link, activeTags, tagSuggestions, onTagClick, onUpdat
                 key={t}
                 type="button"
                 className={`chip chip-button ${activeTags.includes(t) ? "active" : ""}`}
+                aria-pressed={activeTags.includes(t)}
                 onClick={() => onTagClick(t)}
               >
                 #{t}
@@ -132,7 +148,7 @@ export function LinkCard({ link, activeTags, tagSuggestions, onTagClick, onUpdat
         )}
       </div>
       <div className="link-actions">
-        <button type="button" className="btn-ghost" onClick={startEdit} aria-label={`${link.title || link.url} を編集`}>
+        <button ref={editButtonRef} type="button" className="btn-ghost" onClick={startEdit} aria-label={`${link.title || link.url} を編集`}>
           編集
         </button>
         <button type="button" className="btn-ghost danger" onClick={remove} disabled={busy} aria-label={`${link.title || link.url} を削除`}>

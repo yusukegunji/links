@@ -31,8 +31,9 @@ beforeEach(() => {
       return Response.json({ links });
     }
     if (init?.method === "PATCH") {
+      const id = Number(u.pathname.split("/").pop());
       const body = JSON.parse(init.body as string);
-      return Response.json({ link: { ...LINKS[0], ...body } });
+      return Response.json({ link: { ...LINKS.find((l) => l.id === id)!, ...body } });
     }
     if (init?.method === "DELETE") return new Response(null, { status: 204 });
     return Response.json({}, { status: 404 });
@@ -143,5 +144,49 @@ describe("LinkList", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("読み込みに失敗しました");
     await userEvent.click(screen.getByRole("button", { name: "再試行" }));
     await waitFor(() => expect(items()).toHaveLength(2));
+  });
+
+  it("clears a save error on cancel and returns focus to the edit button", async () => {
+    render(<Harness />);
+    await waitFor(() => expect(items()).toHaveLength(2));
+    fetchMock.mockResolvedValueOnce(Response.json({ error: "boom" }, { status: 500 }));
+    await userEvent.click(screen.getByRole("button", { name: "Zenn記事 を編集" }));
+    expect(screen.getByLabelText("タイトル")).toHaveFocus();
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("boom");
+    await userEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: "Zenn記事 を編集" })).toHaveFocus();
+  });
+
+  it("refetches after editing while filtered so non-matching links disappear", async () => {
+    render(<Harness initial="?tags=zenn" />);
+    await waitFor(() => expect(items()).toHaveLength(1));
+    const calls = () => fetchMock.mock.calls.filter(([, i]) => !i?.method).length;
+    const before = calls();
+    await userEvent.click(screen.getByRole("button", { name: "Zenn記事 を編集" }));
+    await userEvent.click(screen.getByRole("button", { name: "zenn を削除" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(calls()).toBe(before + 1));
+  });
+
+  it("keeps active filters visible even if the tag no longer exists", async () => {
+    render(<Harness initial="?tags=gone" />);
+    const cloud = await screen.findByRole("region", { name: "タグで絞り込み" });
+    expect(within(cloud).getByRole("button", { name: /^gone/ })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("collapses long tag lists but shows active ones", async () => {
+    const many: TagCount[] = Array.from({ length: 35 }, (_, i) => ({ name: `t${String(i).padStart(2, "0")}`, count: 1 }));
+    function ManyHarness() {
+      const [search, setSearch] = useState("?tags=t34");
+      return <LinkList search={search} onSearchChange={(f) => setSearch(buildSearch(f))} tags={many} onTagsChanged={() => {}} />;
+    }
+    render(<ManyHarness />);
+    const cloud = screen.getByRole("region", { name: "タグで絞り込み" });
+    expect(within(cloud).getByRole("button", { name: /^t34/ })).toBeInTheDocument();
+    expect(within(cloud).queryByRole("button", { name: /^t33/ })).toBeNull();
+    await userEvent.click(within(cloud).getByRole("button", { name: "+5" }));
+    expect(within(cloud).getByRole("button", { name: /^t33/ })).toBeInTheDocument();
   });
 });
