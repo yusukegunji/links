@@ -15,9 +15,12 @@ export async function safeEqual(a: string, b: string): Promise<boolean> {
 /** Requires `Authorization: Bearer <APP_TOKEN>`. Fails closed when APP_TOKEN is not configured. */
 export const requireToken: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => {
   const expected = c.env.APP_TOKEN;
-  if (!expected) return c.json({ error: "server token is not configured" }, 500);
+  if (!expected) {
+    console.error("APP_TOKEN is not configured");
+    return c.json({ error: "internal error" }, 500);
+  }
   const header = c.req.header("Authorization") ?? "";
-  const match = /^Bearer (.+)$/.exec(header);
+  const match = /^Bearer\s+(.+)$/i.exec(header);
   if (!match || !(await safeEqual(match[1]!, expected))) {
     return c.json({ error: "unauthorized" }, 401);
   }

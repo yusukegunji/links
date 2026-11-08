@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { requireToken } from "./auth";
 import { ConflictError, createLink, deleteLink, getLink, listLinks, listTags, updateLink } from "./repository";
 import { parseLinkInput, parseLinkPatch, ValidationError } from "./validation";
-import { normalizeTags } from "../shared/tags";
+import { MAX_TAGS, normalizeTags } from "../shared/tags";
 
 export const app = new Hono<{ Bindings: Env }>().basePath("/api");
 
@@ -37,7 +37,9 @@ async function readJson(req: Request): Promise<unknown> {
 app.get("/auth/check", (c) => c.json({ ok: true }));
 
 app.get("/links", async (c) => {
-  const tags = normalizeTags((c.req.query("tags") ?? "").split(","));
+  const rawTags = (c.req.query("tags") ?? "").split(",").filter((t) => t.trim());
+  if (rawTags.length > MAX_TAGS) throw new ValidationError(`too many tags (max ${MAX_TAGS})`);
+  const tags = normalizeTags(rawTags);
   const links = await listLinks(c.env.DB, { tags, q: c.req.query("q") });
   return c.json({ links });
 });

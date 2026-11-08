@@ -150,3 +150,66 @@ describe("GET /api/tags", () => {
     ]);
   });
 });
+
+describe("review follow-ups", () => {
+  it("PATCH to a duplicate url returns 409 and rolls back", async () => {
+    await create({ url: "https://one.example/", tags: ["x"] });
+    const { body } = await create({ url: "https://two.example/", title: "Two", tags: ["y"] });
+    const res = await t.request(`/api/links/${body.link.id}`, {
+      method: "PATCH",
+      json: { url: "https://one.example/", title: "Changed", tags: ["z"] },
+    });
+    expect(res.status).toBe(409);
+    const after = (await (await t.request(`/api/links/${body.link.id}`)).json()) as { link: Link };
+    expect(after.link).toMatchObject({ url: "https://two.example/", title: "Two", tags: ["y"] });
+  });
+
+  it("PATCH can change url and clear all tags while keeping shared tags", async () => {
+    await create({ url: "https://keep.example/", tags: ["shared"] });
+    const { body } = await create({ url: "https://old.example/", tags: ["shared", "only"] });
+    const res = await t.request(`/api/links/${body.link.id}`, {
+      method: "PATCH",
+      json: { url: "https://new.example/", tags: [] },
+    });
+    const { link } = (await res.json()) as { link: Link };
+    expect(link).toMatchObject({ url: "https://new.example/", tags: [] });
+    const tags = ((await (await t.request("/api/tags")).json()) as { tags: TagCount[] }).tags;
+    expect(tags).toEqual([{ name: "shared", count: 1 }]);
+  });
+
+  it("combines multiple tags and multiple terms", async () => {
+    await create({ url: "https://a.example/", title: "alpha beta", tags: ["t1", "t2"] });
+    await create({ url: "https://b.example/", title: "alpha", tags: ["t1", "t2"] });
+    await create({ url: "https://c.example/", title: "alpha beta", tags: ["t1"] });
+    expect((await list("?tags=t1,t2&q=alpha%20beta")).map((l) => l.url)).toEqual(["https://a.example/"]);
+  });
+
+  it("escapes backslashes in search", async () => {
+    await create({ url: "https://a.example/", title: "plain" });
+    expect((await list("?q=%5C")).length).toBe(0);
+  });
+
+  it("rejects more than 20 tag filters", async () => {
+    const qs = Array.from({ length: 21 }, (_, i) => `t${i}`).join(",");
+    expect((await t.request(`/api/links?tags=${qs}`)).status).toBe(400);
+  });
+
+  it("commas in tags are converted so they remain filterable", async () => {
+    const { body } = await create({ url: "https://comma.example/", tags: ["a,b"] });
+    expect(body.link.tags).toEqual(["a-b"]);
+    expect((await list("?tags=a-b")).length).toBe(1);
+  });
+
+  it("rejects urls with credentials", async () => {
+    expect((await create({ url: "https://u:p@example.com/" })).res.status).toBe(400);
+  });
+
+  it("auth edge cases", async () => {
+    expect((await t.request("/api/links", { headers: { Authorization: "test-token" } }, null)).status).toBe(401);
+    expect((await t.request("/api/links", { headers: { Authorization: "bearer test-token" } }, null)).status).toBe(200);
+    expect((await t.request("/api/unknown", {}, null)).status).toBe(401);
+    const { app } = await import("./app");
+    const res = await app.request("/api/links", { headers: { Authorization: "Bearer x" } }, { ...t.env, APP_TOKEN: "" });
+    expect(res.status).toBe(500);
+  });
+});

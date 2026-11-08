@@ -16,3 +16,10 @@ describe("normalizeTags", () => {
     expect(normalizeTags(many)).toHaveLength(MAX_TAGS);
   });
 });
+
+describe("normalizeTag edge cases", () => {
+  it("replaces commas and does not split surrogate pairs", () => {
+    expect(normalizeTag("a, b")).toBe("a-b");
+    expect([...normalizeTag("😀".repeat(60))]).toHaveLength(50);
+  });
+});

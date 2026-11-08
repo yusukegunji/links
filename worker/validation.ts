@@ -18,7 +18,10 @@ export function parseHttpUrl(value: unknown): string {
     throw new ValidationError("url is invalid");
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new ValidationError("url must be http(s)");
-  return u.toString();
+  if (u.username || u.password) throw new ValidationError("url must not contain credentials");
+  const normalized = u.toString();
+  if (normalized.length > MAX_URL_LENGTH) throw new ValidationError("url is too long");
+  return normalized;
 }
 
 function optString(value: unknown, name: string, max: number): string | undefined {

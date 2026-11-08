@@ -46,9 +46,10 @@ function tagStatements(db: D1Database, linkIdSql: string, linkIdArg: string | nu
     db
       .prepare(
         `INSERT OR IGNORE INTO link_tags (link_id, tag_id)
-         SELECT (${linkIdSql}), id FROM tags WHERE name = ?`,
+         SELECT (${linkIdSql}), id FROM tags
+         WHERE name = ? AND EXISTS (SELECT 1 FROM links WHERE id = (${linkIdSql}))`,
       )
-      .bind(linkIdArg, name),
+      .bind(linkIdArg, name, linkIdArg),
   ]);
 }
 
@@ -131,12 +132,14 @@ export async function updateLink(db: D1Database, id: number, patch: Partial<Link
     stmts.push(...tagStatements(db, "?", id, patch.tags));
     stmts.push(pruneOrphanTags(db));
   }
+  let results: D1Result[];
   try {
-    await db.batch(stmts);
+    results = await db.batch(stmts);
   } catch (e) {
     if (isUniqueViolation(e)) throw new ConflictError("url already exists");
     throw e;
   }
+  if ((results[0]?.meta.changes ?? 0) === 0) return null; // deleted concurrently
   return getLink(db, id);
 }
 
