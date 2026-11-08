@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { inferTagsFromUrl } from "../../shared/autoTags";
 import type { Link } from "../../shared/types";
 import { api, ApiError } from "../api";
@@ -8,6 +8,14 @@ import { TagInput } from "./TagInput";
 interface Props {
   tagSuggestions: string[];
   onCreated: (link: Link) => void;
+}
+
+function hostOf(s: string): string | null {
+  try {
+    return new URL(s).hostname;
+  } catch {
+    return null;
+  }
 }
 
 function looksLikeUrl(s: string): boolean {
@@ -32,6 +40,14 @@ export function LinkForm({ tagSuggestions, onCreated }: Props) {
   const [loadingTitle, setLoadingTitle] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The last title filled in automatically, so it can be replaced when the URL changes. */
+  const autoTitleRef = useRef("");
+  const host = hostOf(url);
+
+  // A dismissal only applies to the site it was made on.
+  useEffect(() => {
+    setDismissed(new Set());
+  }, [host]);
 
   // Instant URL-based tags (no network).
   useEffect(() => {
@@ -39,15 +55,22 @@ export function LinkForm({ tagSuggestions, onCreated }: Props) {
     setTagState((s) => mergeAutoTags(s.tags, s.auto, inferred, dismissed));
   }, [url, dismissed]);
 
-  // Debounced title lookup.
+  // Debounced title lookup. Auto-filled titles follow the URL; typed titles are never overwritten.
   useEffect(() => {
-    if (!looksLikeUrl(url) || titleTouched) return;
+    setLoadingTitle(false);
+    if (titleTouched) return;
+    const staleAuto = autoTitleRef.current; // capture: updaters run lazily
+    setTitle((t) => (t === staleAuto ? "" : t));
+    autoTitleRef.current = "";
+    if (!looksLikeUrl(url)) return;
     const ctrl = new AbortController();
     const timer = setTimeout(async () => {
       setLoadingTitle(true);
       try {
         const s = await api.suggest(url, ctrl.signal);
-        if (s.title) setTitle((t) => (t ? t : s.title));
+        if (ctrl.signal.aborted || !s.title) return;
+        autoTitleRef.current = s.title;
+        setTitle((t) => (t === "" ? s.title : t));
       } catch {
         /* best effort */
       } finally {
@@ -67,6 +90,7 @@ export function LinkForm({ tagSuggestions, onCreated }: Props) {
     setTagState({ tags: [], auto: new Set() });
     setDismissed(new Set());
     setTitleTouched(false);
+    autoTitleRef.current = "";
   }
 
   async function onSubmit(e: FormEvent) {
@@ -78,6 +102,7 @@ export function LinkForm({ tagSuggestions, onCreated }: Props) {
       reset();
       onCreated(link);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) return; // handled globally (logout)
       setError(
         err instanceof ApiError && err.status === 409
           ? "このURLはすでに登録されています"
@@ -105,7 +130,9 @@ export function LinkForm({ tagSuggestions, onCreated }: Props) {
       </label>
       <label className="field">
         <span>
-          タイトル {loadingTitle && <small className="muted">取得中…</small>}
+          タイトル <small className="muted" role="status">
+            {loadingTitle ? "取得中…" : ""}
+          </small>
         </span>
         <input
           value={title}
@@ -113,7 +140,7 @@ export function LinkForm({ tagSuggestions, onCreated }: Props) {
           placeholder="空欄ならページタイトルを自動取得"
           onChange={(e) => {
             setTitle(e.target.value);
-            setTitleTouched(true);
+            setTitleTouched(e.target.value !== "");
           }}
         />
       </label>

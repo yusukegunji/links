@@ -15,7 +15,7 @@ export function TagInput({ value, onChange, onRemove, autoTags, suggestions = []
   const listId = useId();
 
   function commit(raw: string) {
-    const added = raw.split(",").map(normalizeTag).filter((t) => t && !value.includes(t));
+    const added = raw.split(/[,、]/).map(normalizeTag).filter((t) => t && !value.includes(t));
     if (added.length) onChange([...value, ...new Set(added)]);
     setDraft("");
   }
@@ -26,7 +26,8 @@ export function TagInput({ value, onChange, onRemove, autoTags, suggestions = []
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.nativeEvent.isComposing) return;
+    // keyCode 229: Safari fires keydown after compositionend for the confirming Enter.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter" || e.key === ",") {
       e.preventDefault();
       if (draft.trim()) commit(draft);

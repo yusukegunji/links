@@ -35,4 +35,11 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("link", { name: "＋ 追加" }));
     expect(screen.getByRole("heading", { name: "リンクを追加" })).toBeInTheDocument();
   });
+
+  it("logs out when an API call returns 401", async () => {
+    localStorage.setItem("links.token", "expired");
+    render(<App />);
+    expect(await screen.findByLabelText("アクセストークン")).toBeInTheDocument();
+    expect(localStorage.getItem("links.token")).toBeNull();
+  });
 });

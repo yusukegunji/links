@@ -28,19 +28,27 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}, token = getToken()): Promise<T> {
+let unauthorizedHandler: (() => void) | null = null;
+
+/** Register a callback invoked whenever an authenticated request gets 401. */
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  unauthorizedHandler = fn;
+}
+
+async function request<T>(path: string, init: RequestInit = {}, token = getToken(), handle401 = true): Promise<T> {
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (init.body) headers.set("Content-Type", "application/json");
   const res = await fetch(`/api${path}`, { ...init, headers });
   if (res.status === 204) return undefined as T;
   const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (res.status === 401 && handle401) unauthorizedHandler?.();
   if (!res.ok) throw new ApiError(res.status, data.error ?? res.statusText);
   return data as T;
 }
 
 export const api = {
-  checkToken: (token: string) => request<{ ok: true }>("/auth/check", {}, token),
+  checkToken: (token: string) => request<{ ok: true }>("/auth/check", {}, token, false),
   listLinks: (params: { tags?: string[]; q?: string } = {}) => {
     const sp = new URLSearchParams();
     if (params.tags?.length) sp.set("tags", params.tags.join(","));

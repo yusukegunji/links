@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import type { TagCount } from "../shared/types";
-import { api, ApiError } from "./api";
+import { api } from "./api";
 import { LinkForm } from "./components/LinkForm";
 import { TokenGate } from "./components/TokenGate";
 import { useLocation } from "./router";
+
+function isModifiedClick(e: MouseEvent<HTMLAnchorElement>): boolean {
+  return e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0;
+}
 
 function Shell({ logout }: { logout: () => void }) {
   const { path, navigate } = useLocation();
@@ -12,10 +16,10 @@ function Shell({ logout }: { logout: () => void }) {
   const refreshTags = useCallback(async () => {
     try {
       setTags(await api.listTags());
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) logout();
+    } catch {
+      /* 401 is handled globally; other errors are non-fatal here */
     }
-  }, [logout]);
+  }, []);
 
   useEffect(() => {
     void refreshTags();
@@ -27,6 +31,7 @@ function Shell({ logout }: { logout: () => void }) {
         href={to}
         aria-current={path === to ? "page" : undefined}
         onClick={(e) => {
+          if (isModifiedClick(e)) return;
           e.preventDefault();
           navigate(to);
         }}
@@ -44,6 +49,7 @@ function Shell({ logout }: { logout: () => void }) {
             className="brand"
             href="/"
             onClick={(e) => {
+              if (isModifiedClick(e)) return;
               e.preventDefault();
               navigate("/");
             }}

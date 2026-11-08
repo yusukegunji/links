@@ -1,5 +1,5 @@
-import { useState, type FormEvent, type ReactNode } from "react";
-import { api, ApiError, getToken, setToken } from "../api";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { api, ApiError, getToken, setToken, setUnauthorizedHandler } from "../api";
 
 export function TokenGate({ children }: { children: (logout: () => void) => ReactNode }) {
   const [token, setTokenState] = useState(getToken());
@@ -22,11 +22,16 @@ export function TokenGate({ children }: { children: (logout: () => void) => Reac
     }
   }
 
-  function logout() {
+  const logout = useCallback(() => {
     setToken(null);
     setTokenState(null);
     setDraft("");
-  }
+  }, []);
+
+  useEffect(() => {
+    setUnauthorizedHandler(logout);
+    return () => setUnauthorizedHandler(null);
+  }, [logout]);
 
   if (token) return <>{children(logout)}</>;
 

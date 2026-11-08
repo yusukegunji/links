@@ -13,7 +13,8 @@ export function navigate(to: string) {
 
 /** Minimal pathname router (no dependency). */
 export function useLocation() {
-  const path = useSyncExternalStore(subscribe, () => window.location.pathname);
+  const raw = useSyncExternalStore(subscribe, () => window.location.pathname);
+  const path = raw.length > 1 ? raw.replace(/\/+$/, "") : raw;
   const search = useSyncExternalStore(subscribe, () => window.location.search);
   const go = useCallback((to: string) => navigate(to), []);
   return { path, search, navigate: go };
