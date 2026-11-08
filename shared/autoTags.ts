@@ -9,8 +9,10 @@ interface DomainRule {
   tags: string[];
 }
 
+/** First match wins, so more specific hosts (e.g. aws.amazon.com) must precede broader ones. */
 const DOMAIN_RULES: DomainRule[] = [
-  { hosts: ["github.com", "github.io"], tags: ["github", "code"] },
+  { hosts: ["github.com"], tags: ["github", "code"] },
+  { hosts: ["github.io"], tags: ["github-pages"] },
   { hosts: ["gitlab.com"], tags: ["gitlab", "code"] },
   { hosts: ["youtube.com", "youtu.be"], tags: ["youtube", "video"] },
   { hosts: ["vimeo.com"], tags: ["vimeo", "video"] },
@@ -62,13 +64,12 @@ const DOMAIN_RULES: DomainRule[] = [
 
 /** Path/subdomain/extension based rules applied to any URL. */
 const GENERIC_RULES: Array<{ test: (u: URL) => boolean; tags: string[] }> = [
-  { test: (u) => /^docs?\./.test(u.hostname) || /\/docs?(\/|$)/.test(u.pathname), tags: ["docs"] },
+  { test: (u) => /^docs\./.test(u.hostname) || /\/docs?(\/|$)/.test(u.pathname), tags: ["docs"] },
   { test: (u) => /^blog\./.test(u.hostname) || /\/blog(\/|$)/.test(u.pathname), tags: ["blog"] },
   { test: (u) => /^news\./.test(u.hostname) || /\/news(\/|$)/.test(u.pathname), tags: ["news"] },
   { test: (u) => /\.pdf$/i.test(u.pathname), tags: ["pdf"] },
   { test: (u) => /\.(png|jpe?g|gif|webp|svg)$/i.test(u.pathname), tags: ["image"] },
   { test: (u) => /\.(mp4|mov|webm)$/i.test(u.pathname), tags: ["video"] },
-  { test: (u) => /\/(api|reference)(\/|$)/.test(u.pathname), tags: ["reference"] },
   { test: (u) => /\/(tutorial|getting-started|guide)s?(\/|$)/i.test(u.pathname), tags: ["tutorial"] },
 ];
 
@@ -85,7 +86,7 @@ export function siteName(hostname: string): string | null {
   if (labels.length < 2) return null;
   if (/^\d+$/.test(labels[labels.length - 1]!)) return null; // IPv4
   let i = labels.length - 2;
-  if (i > 0 && labels[labels.length - 1]!.length === 2 && PUBLIC_SECOND_LEVEL.has(labels[i]!)) i--;
+  if (i > 0 && labels.length > 2 && labels[labels.length - 1]!.length === 2 && PUBLIC_SECOND_LEVEL.has(labels[i]!)) i--;
   return labels[i] ?? null;
 }
 

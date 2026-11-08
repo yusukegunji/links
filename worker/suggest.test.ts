@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { decodeEntities, extractTitle, fetchTitle, isFetchableHost, suggest } from "./suggest";
+import { decodeEntities, detectCharset, extractTitle, fetchTitle, isFetchableUrl, parseAttributes, suggest } from "./suggest";
 
 function htmlResponse(body: string, init: ResponseInit = {}) {
   return new Response(body, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" }, ...init });
@@ -9,6 +9,9 @@ describe("extractTitle", () => {
   it("prefers og:title in either attribute order", () => {
     expect(extractTitle('<meta property="og:title" content="OG"><title>T</title>')).toBe("OG");
     expect(extractTitle('<meta content="OG2" property="og:title"><title>T</title>')).toBe("OG2");
+    expect(extractTitle(`<meta property="og:title" content="Don't stop">`)).toBe("Don't stop");
+    expect(extractTitle("<titlefoo>x</titlefoo><title>Real</title>")).toBe("Real");
+    expect(extractTitle('<meta property="og:title" content=""><title>Fallback</title>')).toBe("Fallback");
   });
   it("falls back to <title> and normalizes whitespace/entities", () => {
     expect(extractTitle("<title>\n  A &amp; B &#x1F600; &#12354;\n</title>")).toBe("A & B 😀 あ");
@@ -18,20 +21,55 @@ describe("extractTitle", () => {
 
 describe("decodeEntities", () => {
   it("leaves unknown entities and invalid code points", () => {
-    expect(decodeEntities("&foo; &#0; &#x110000;")).toBe("&foo; &#0; &#x110000;");
+    expect(decodeEntities("&foo; &#0; &#x110000; &#xD800;")).toBe("&foo; &#0; &#x110000; &#xD800;");
+    expect(decodeEntities("a&hellip;")).toBe("a…");
   });
 });
 
-describe("isFetchableHost", () => {
+describe("isFetchableUrl", () => {
   it.each([
-    ["example.com", true],
-    ["localhost", false],
-    ["foo.localhost", false],
-    ["127.0.0.1", false],
-    ["[::1]", false],
-    ["printer.local", false],
-    ["intranet", false],
-  ])("%s -> %s", (h, ok) => expect(isFetchableHost(h)).toBe(ok));
+    ["https://example.com/", true],
+    ["https://example.com:443/", true],
+    ["http://localhost/", false],
+    ["http://localhost./", false],
+    ["http://x.local./", false],
+    ["http://foo.localhost/", false],
+    ["http://127.0.0.1/", false],
+    ["http://2130706433/", false],
+    ["http://[::1]/", false],
+    ["http://intranet/", false],
+    ["https://example.com:8080/", false],
+  ])("%s -> %s", (u, ok) => expect(isFetchableUrl(new URL(u))).toBe(ok));
+});
+
+describe("parseAttributes", () => {
+  it("handles mixed quotes and unquoted values", () => {
+    expect(parseAttributes(`<meta property="og:title" content="Don't stop" data-x=1 hidden>`)).toEqual({
+      property: "og:title",
+      content: "Don't stop",
+      "data-x": "1",
+      hidden: "",
+    });
+  });
+});
+
+describe("pathological input", () => {
+  it("stays linear on unterminated tags", () => {
+    const evil = "<meta ".repeat(40000) + "<title>".repeat(40000);
+    const start = performance.now();
+    expect(extractTitle(evil)).toBe("");
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+});
+
+describe("detectCharset", () => {
+  it("uses header, then meta, then utf-8", () => {
+    const meta = new TextEncoder().encode('<meta charset="Shift_JIS">');
+    expect(detectCharset("text/html; charset=EUC-JP", meta)).toBe("euc-jp");
+    expect(detectCharset("text/html", meta)).toBe("shift_jis");
+    expect(detectCharset("text/html", new Uint8Array())).toBe("utf-8");
+    expect(detectCharset("text/html; charset=bogus", new Uint8Array())).toBe("utf-8");
+  });
 });
 
 describe("fetchTitle", () => {
@@ -53,9 +91,36 @@ describe("fetchTitle", () => {
     expect(never).not.toHaveBeenCalled();
   });
   it("only reads up to the size limit", async () => {
-    const big = "<title>Big</title>" + "x".repeat(1024 * 1024);
+    const big = "x".repeat(300 * 1024) + "<title>TooFar</title>";
     const f = vi.fn(async () => htmlResponse(big));
-    expect(await fetchTitle("https://example.com/", f as unknown as typeof fetch)).toBe("Big");
+    expect(await fetchTitle("https://example.com/", f as unknown as typeof fetch)).toBe("");
+  });
+  it("decodes Shift_JIS pages", async () => {
+    // "テスト" in Shift_JIS
+    const bytes = new Uint8Array([0x3c,0x74,0x69,0x74,0x6c,0x65,0x3e,0x83,0x65,0x83,0x58,0x83,0x67,0x3c,0x2f,0x74,0x69,0x74,0x6c,0x65,0x3e]);
+    const f = vi.fn(async () => new Response(bytes, { headers: { "Content-Type": "text/html; charset=Shift_JIS" } }));
+    expect(await fetchTitle("https://example.jp/", f as unknown as typeof fetch)).toBe("テスト");
+  });
+  it("follows redirects but re-validates each hop", async () => {
+    const f = vi.fn(async (url: string) =>
+      url === "https://a.example/"
+        ? new Response(null, { status: 302, headers: { Location: "/next" } })
+        : url === "https://a.example/next"
+          ? new Response(null, { status: 301, headers: { Location: "http://localhost/" } })
+          : htmlResponse("<title>internal</title>"),
+    );
+    expect(await fetchTitle("https://a.example/", f as unknown as typeof fetch)).toBe("");
+    expect(f).toHaveBeenCalledTimes(2);
+
+    const ok = vi.fn(async (url: string) =>
+      url === "https://a.example/" ? new Response(null, { status: 302, headers: { Location: "https://b.example/" } }) : htmlResponse("<title>B</title>"),
+    );
+    expect(await fetchTitle("https://a.example/", ok as unknown as typeof fetch)).toBe("B");
+  });
+  it("gives up after too many redirects", async () => {
+    const loop = vi.fn(async () => new Response(null, { status: 302, headers: { Location: "https://a.example/" } }));
+    expect(await fetchTitle("https://a.example/", loop as unknown as typeof fetch)).toBe("");
+    expect(loop).toHaveBeenCalledTimes(4);
   });
 });
 

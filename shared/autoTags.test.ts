@@ -13,6 +13,10 @@ describe("inferTagsFromUrl", () => {
     ["https://developer.mozilla.org/ja/docs/Web/API", ["mdn", "docs", "web"]],
     ["https://aws.amazon.com/jp/", ["aws"]],
     ["https://www.amazon.co.jp/dp/123", ["amazon", "shopping"]],
+    ["https://someone.github.io/blog/", ["github-pages", "blog"]],
+    ["https://GitHub.com/a/b", ["github", "code"]],
+    ["https://dev.to/x", ["dev.to", "tech"]],
+    ["https://stackoverflow.com/q/1", ["stackoverflow", "q&a"]],
   ])("%s", (url, expected) => {
     expect(inferTagsFromUrl(url)).toEqual(expected);
   });
@@ -27,6 +31,7 @@ describe("inferTagsFromUrl", () => {
     expect(inferTagsFromUrl("https://example.com/blog/post")).toEqual(["example", "blog"]);
     expect(inferTagsFromUrl("https://example.com/paper.PDF")).toEqual(["example", "pdf"]);
     expect(inferTagsFromUrl("https://example.com/getting-started")).toEqual(["example", "tutorial"]);
+    expect(inferTagsFromUrl("https://example.com/api/v1")).toEqual(["example"]);
   });
 
   it("returns nothing for invalid or non-http urls", () => {
@@ -41,5 +46,6 @@ describe("siteName", () => {
     expect(siteName("localhost")).toBeNull();
     expect(siteName("192.168.0.1")).toBeNull();
     expect(siteName("example.com")).toBe("example");
+    expect(siteName("example.co.jp")).toBe("example");
   });
 });
