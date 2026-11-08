@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { requireToken } from "./auth";
 import { ConflictError, createLink, deleteLink, getLink, listLinks, listTags, updateLink } from "./repository";
-import { parseLinkInput, parseLinkPatch, ValidationError } from "./validation";
+import { suggest } from "./suggest";
+import { parseHttpUrl, parseLinkInput, parseLinkPatch, ValidationError } from "./validation";
 import { MAX_TAGS, normalizeTags } from "../shared/tags";
 
 export const app = new Hono<{ Bindings: Env }>().basePath("/api");
@@ -67,3 +68,8 @@ app.delete("/links/:id", async (c) => {
 });
 
 app.get("/tags", async (c) => c.json({ tags: await listTags(c.env.DB) }));
+
+app.get("/suggest", async (c) => {
+  const url = parseHttpUrl(c.req.query("url"));
+  return c.json(await suggest(url));
+});
