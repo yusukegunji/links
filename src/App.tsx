@@ -3,14 +3,24 @@ import type { TagCount } from "../shared/types";
 import { api } from "./api";
 import { LinkForm } from "./components/LinkForm";
 import { TokenGate } from "./components/TokenGate";
-import { useLocation } from "./router";
+import { buildSearch, useLocation } from "./router";
+import { LinkList } from "./components/LinkList";
 
 function isModifiedClick(e: MouseEvent<HTMLAnchorElement>): boolean {
   return e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0;
 }
 
 function Shell({ logout }: { logout: () => void }) {
-  const { path, navigate } = useLocation();
+  const { path, search, navigate } = useLocation();
+  const onSearchChange = useCallback(
+    (f: { tags: string[]; q: string }) => {
+      // Typing refines the current history entry (no entry per keystroke); toggling tags
+      // pushes a new entry so Back undoes the last tag change.
+      const sameTags = f.tags.join(",") === (new URLSearchParams(window.location.search).get("tags") ?? "");
+      navigate(`/${buildSearch(f)}`, { replace: sameTags });
+    },
+    [navigate],
+  );
   const [tags, setTags] = useState<TagCount[]>([]);
 
   const refreshTags = useCallback(async () => {
@@ -80,7 +90,7 @@ function Shell({ logout }: { logout: () => void }) {
         ) : (
           <>
             <h1 className="page-title">一覧</h1>
-            <p className="muted">（一覧ページは次の PR で実装）</p>
+            <LinkList search={search} onSearchChange={onSearchChange} tags={tags} onTagsChanged={refreshTags} />
           </>
         )}
       </main>

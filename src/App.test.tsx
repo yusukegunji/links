@@ -1,16 +1,17 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 
 beforeEach(() => {
   localStorage.clear();
+  window.history.replaceState(null, "", "/");
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       const auth = new Headers(init?.headers).get("Authorization");
       if (auth !== "Bearer good") return Response.json({ error: "unauthorized" }, { status: 401 });
-      if (url === "/api/tags") return Response.json({ tags: [] });
+      if (url === "/api/tags") return Response.json({ tags: [{ name: "a", count: 1 }] });
       if (url.startsWith("/api/links")) return Response.json({ links: [] });
       return Response.json({ ok: true });
     }),
@@ -41,5 +42,25 @@ describe("App", () => {
     render(<App />);
     expect(await screen.findByLabelText("アクセストークン")).toBeInTheDocument();
     expect(localStorage.getItem("links.token")).toBeNull();
+  });
+
+  it("syncs filters with real history: tags push, typing replaces, back restores", async () => {
+    localStorage.setItem("links.token", "good");
+    render(<App />);
+    const cloud = await screen.findByRole("region", { name: "タグで絞り込み" });
+    const start = window.history.length;
+    await userEvent.click(within(cloud).getByRole("button", { name: /^a/ }));
+    expect(window.location.search).toBe("?tags=a");
+    expect(window.history.length).toBe(start + 1);
+
+    await userEvent.type(screen.getByLabelText("フリーワード検索"), "xy");
+    await waitFor(() => expect(window.location.search).toBe("?tags=a&q=xy"));
+    expect(window.history.length).toBe(start + 1);
+
+    act(() => {
+      window.history.back();
+    });
+    await waitFor(() => expect(window.location.search).toBe(""));
+    await waitFor(() => expect(screen.getByLabelText("フリーワード検索")).toHaveValue(""));
   });
 });
